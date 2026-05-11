@@ -1,0 +1,57 @@
+As it became more optimized from O0 -> O1, I expected there to be less lines. What was really interesting through was form O1 -> O3, the number of lines of assembly actually increased when it was more optimized.
+
+O0->O1 was 210 lines -> 180 lines
+O1->O3 was 180 lines -> 188 lines
+
+At the O0 level, it does not do any analysis. It is simply a direct translation to assembly and everything just lives on the stack. 
+The offset, n, loop counters i, and the FILE* pointer all live in named stack slots and are read/written on every use.
+This generates many redundant load/store pairs that a register allocator would eliminate.
+	.file	"optimization.c"
+	.text
+	.section	.rodata (STRING LITERALS ARE STORED IN .rodata)
+.LC0:
+	.string	"Usage: %s <filename>\n"
+.LC1:
+	.string	"rb"
+.LC2:
+	.string	"Unable to open file: %s\n"
+	.align 8  (NOT THERE IN SUBSEQUENT OPTIMIZATIONS)
+.LC3: (OMITTED LATER)
+	.string	"File opened. First fread test...\n"
+.LC4: (SAME HERE)
+	.string	"Read %zu bytes\n"
+.LC5:
+	.string	"%08lx "
+.LC6:
+	.string	"%02x "
+.LC7:
+	.string	"   "
+.LC8:
+	.string	"|"
+	.text
+	.globl	main
+	.type	main, @function
+
+
+
+O1 actually includes the optimizations where it no longer just lives on the stack but instead changes the way the data is structured and located. 
+	.file	"optimization.c"
+	.text
+	.section	.rodata.str1.1,"aMS",@progbits,1 (is seen in O3 as well, string literals are stored here)
+.LC0:
+[ETC ETC ETC]
+.LC6:
+	.string	"|"
+	.text
+printf gets replaced with __fprintf_chk@PLT
+Variables are now in registers
+%r15, %r14, %r13, %r12, %rbp, %rbx
+
+O3 is the most aggressive optimization
+.LC6:
+	.string	"|"
+	.section	.text.startup,"ax",@progbits
+	.p2align 4 (NOT PRESENT IN OTHER 2)
+
+Its string section is also .rodata.str1.1,"aMS",@progbits,1 and uses the same __printf_chk as O1
+There were also 6 instances of xorl in O3 compared to 1 instance of xorl in O0 and O1.
